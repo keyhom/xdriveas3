@@ -1,4 +1,4 @@
-package org.xdrive.game {
+package org.xdrive.core.game {
 
 import flash.utils.IDataInput;
 import flash.utils.IDataOutput;

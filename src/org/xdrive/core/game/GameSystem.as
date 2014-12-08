@@ -1,4 +1,4 @@
-package org.xdrive.game {
+package org.xdrive.core.game {
 
 import org.xdrive.core.util.IEntity;
 import org.xdrive.core.util.ISystem;
@@ -8,7 +8,7 @@ import org.xdrive.core.util.ISystem;
  */
 public class GameSystem implements ISystem {
 
-    private static const NOOP_FILTER:Function = function(o:IEntity):Boolean {
+    private static const NOOP_FILTER:Function = function (o:IEntity):Boolean {
         return false;
     };
 
