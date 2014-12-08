@@ -1,6 +1,4 @@
 package org.xdrive.game.behavior.tree {
-import org.xdrive.game.behavior.*;
-
 /**
  * Action behavior
  *

@@ -47,7 +47,7 @@ public class DynamicFiniteStateMachine {
         if (null != func) {
             try {
                 return func.apply(fsm, [name, from, to].concat(args));
-            } catch (e:Error) {
+            } catch (e:*) {
                 return fsm.mStates.error(name, from, to, args, DynamicFiniteStateMachine.Error.INVALID_CALLBACK, "an exception occurred in a caller-provided callback function", e);
             }
         }
@@ -119,7 +119,7 @@ public class DynamicFiniteStateMachine {
     protected function init():void {
         this.mInitial = (typeof mCfg.initial == 'String') ? {state: mCfg.initial} : mCfg.initial; // allow for a simple string, or an object with { state: 'foo', event: 'setup', defer: true|false }
         this.mTerminal = mCfg.terminal || mCfg['final'];
-        this.mEvents = mCfg.events || {};
+        this.mEvents = mCfg.events || [];
         this.mCallbacks = mCfg.callbacks || {};
         this.mMap = {};
 
@@ -136,18 +136,19 @@ public class DynamicFiniteStateMachine {
             add(mEvents[n]);
         }
 
-        for (var name:String in mMap) {
+        var name:String;
+        for (name in mMap) {
             if (mMap.hasOwnProperty(name))
                 mStates[name] = DynamicFiniteStateMachine.buildEvent(name, mMap[name]);
         }
 
-        for (var name:String in mCallbacks) {
+        for (name in mCallbacks) {
             if (mCallbacks.hasOwnProperty(name))
                 mStates[name] = mCallbacks[name];
         }
 
         mStates.current = 'none';
-        mStates.error = mCfg.error || function (name:String, from:String, to:String, args:Array, error:String, msg:String, e:Error):void {
+        mStates.error = mCfg.error || function (name:String, from:String, to:String, args:Array, error:String, msg:String, e:*):void {
             throw e || msg;
         };
 
@@ -159,7 +160,7 @@ public class DynamicFiniteStateMachine {
 
     private function add(e:Object):void {
         // allow 'wildcard' transition if 'from' it not specified
-        var from:Array = (e.from instanceof Array) ? e.from : (e.from ? [e.from] : [DynamicFiniteStateMachine.WILDCARD]);
+        var from:Array = (e.from is Array) ? e.from : (e.from ? [e.from] : [DynamicFiniteStateMachine.WILDCARD]);
         mMap[e.name] = mMap[e.name] || {};
         for (var n:int = 0; n < from.length; ++n) {
             mMap[e.name][from[n]] = e.to || from[n]; // allow no-op transition if 'to' is not specified
@@ -167,7 +168,7 @@ public class DynamicFiniteStateMachine {
     }
 
     public function isCurrent(state:*):Boolean {
-        return (state instanceof Array) ? (state.indexOf(mStates.current) >= 0) : (mStates.current == state);
+        return (state is Array) ? (state.indexOf(mStates.current) >= 0) : (mStates.current == state);
     }
 
     public function can(event:String):Boolean {

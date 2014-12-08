@@ -3,6 +3,11 @@ import flash.errors.IllegalOperationError;
 import flash.events.EventDispatcher;
 import flash.utils.Dictionary;
 
+[Event(name="beforeEvent", type="org.xdrive.game.behavior.state.StateEvent")]
+[Event(name="afterEvent", type="org.xdrive.game.behavior.state.StateEvent")]
+[Event(name="enterState", type="org.xdrive.game.behavior.state.StateEvent")]
+[Event(name="leaveState", type="org.xdrive.game.behavior.state.StateEvent")]
+[Event(name="stageChange", type="org.xdrive.game.behavior.state.StateEvent")]
 /**
  * Finite-State-Machine (FSM)
  *
@@ -41,6 +46,13 @@ public class FiniteStateMachine extends EventDispatcher {
         return null;
     }
 
+    /** Private constructor. */
+    public function FiniteStateMachine(cfg:Object) {
+        if (!sConstructorFlag)
+            throw new IllegalOperationError("Public instance FiniteStateMachine wasn't allowed! Use FiniteStateMachine.create() instead.");
+        sConstructorFlag = false;
+        this.mCfg = cfg;
+    }
     /** Configuration */
     private var mCfg:Object;
     /** The startup event object. */
@@ -51,62 +63,13 @@ public class FiniteStateMachine extends EventDispatcher {
     private var mEvents:Array;
     /** The tree of structure by state. */
     private var mEventMap:Object;
-
     /** The current State. */
     private var mCurrent:State;
+    /** The flag to mark transition behavior. */
+    private var mTransition:Boolean;
+    /** My Implementation. */
 
-    /** Private constructor. */
-    public function FiniteStateMachine(cfg:Object) {
-        if (!sConstructorFlag)
-            throw new IllegalOperationError("Public instance FiniteStateMachine wasn't allowed! Use FiniteStateMachine.create() instead.");
-        sConstructorFlag = false;
-        this.mCfg = cfg;
-    }
-
-    /** Initialize */
-    protected function init():Boolean {
-        // Parse the configuration.
-        if (!mCfg)
-            return false;
-
-        this.mInitial = (typeof mCfg.initial == 'String') ? {state: mCfg.initial} : mCfg.initial;
-        this.mTerminal = mCfg.terminal || mCfg['final'];
-        this.mEvents = mCfg.events || [];
-        // this.mCallbacks = mCfg.callbacks || {};
-        this.mEventMap = {};
-
-        // Nested helper: constructs the event-state map.
-        function add(e:*):void {
-            var from:Array = (e.from instanceof Array) ? e.from : (e.from ? [e.from] : [FiniteStateMachine.WILDCARD]);
-            mEventMap[e.name] = mEventMap[e.name] || {};
-            for (var n:int = 0; n < from.length; ++n) {
-                mEventMap[e.name][from[n]] = e.to || from[n];
-            }
-        }
-
-        if (mInitial) {
-            mInitial.event = mInitial.event || 'startup';
-            add({name: mInitial.event, from: BUILTIN_STATES.NONE, to: mInitial.state});
-        }
-
-        for (var n:int = 0; n < mEvents.length; ++n) {
-            add(mEvents[n]);
-        }
-
-        for (var name:String in mEventMap) {
-            if (mEventMap.hasOwnProperty(name)) {
-//                mFsm[name] = FiniteStateMachine.buildEvent(name, mEventMap[name]);
-            }
-        }
-
-        mCurrent = BUILTIN_STATES.NONE;
-
-        if (mInitial && !mInitial.defer) {
-            on(mInitial.event);
-        }
-
-        return true;
-    }
+    private var mStates:Dictionary;
 
     public function get current():State {
         return mCurrent;
@@ -121,11 +84,11 @@ public class FiniteStateMachine extends EventDispatcher {
     }
 
     public function isState(state:*):Boolean {
-        return (state instanceof Array) ? (state.indexOf(current.name) >= 0) : (current.name == state);
+        return (state is Array) ? (state.indexOf(current.name) >= 0) : (current.name == state);
     }
 
     public function can(event:String):Boolean {
-        return (mEventMap[event].hasOwnProperty(mCurrent) || mEventMap[event].hasOwnProperty(FiniteStateMachine.WILDCARD));
+        return (mEventMap[event].hasOwnProperty(current.name) || mEventMap[event].hasOwnProperty(FiniteStateMachine.WILDCARD));
     }
 
     public function cannot(event:String):Boolean {
@@ -139,47 +102,41 @@ public class FiniteStateMachine extends EventDispatcher {
      * @param args the addition arguments.
      */
     public function on(event:String, ...args):int {
+        var map:Object = mEventMap[event];
         var from:String = current.name;
-        var to:String = mEventMap[from] || mEventMap[WILDCARD] || from;
+        var to:String = map[from] || map[WILDCARD] || from;
 
-//        if (mTransition)
-//            throw new IllegalOperationError("event " + event + " inappropriate because transition did not complete.");
+        if (mTransition)
+            throw new IllegalOperationError("event " + event + " inappropriate because transition did not complete.");
 
         if (cannot(event)) {
             throw new IllegalOperationError("event " + event + " inappropriate in current state " + mCurrent);
         }
 
-        if (!dispatchEvent(new StateTransitionEvent(StateTransitionEvent.BEFORE, from, to)))
+        args = [event].concat(args);
+
+        if (!dispatchEvent(new StateEvent(StateEvent.BEFORE, from, to, args)))
             return Result.CANCELLED;
 
         if (from == to) {
-            dispatchEvent(new StateTransitionEvent(StateTransitionEvent.AFTER, from, to));
+            dispatchEvent(new StateEvent(StateEvent.AFTER, from, to, args));
             return Result.NO_TRANSITION;
         }
 
         // Prepare a transition method for EITHER lower down, or by caller if they want an async transition (indicated by an ASYNC return value from leaveState).
-        var self:FiniteStateMachine = this;
-        var transition:Function = function():int {
-            self.mCurrent = getState(to);
-            var state:State = getState(event);
-            if (state) {
-                state.dispatchEvent(new StateEvent(StateEvent.ENTER, from, to));
-                state.dispatchEvent(new StateEvent(StateEvent.CHANGE, from, to));
-            }
-            dispatchEvent(new StateTransitionEvent(StateTransitionEvent.AFTER, from, to));
+        mTransition = true;
+        addEventListener(StateEvent.TRANSITION_COMPLETE, onTransition, false);
+        addEventListener(StateEvent.TRANSITION_CANCELLED, onTransition, false);
+
+        var leave:Boolean = dispatchEvent(new StateEvent(StateEvent.LEAVE, from, to, args));
+
+        if (!leave) {
+            return Result.PENDING;
+        } else {
+            dispatchEvent(new StateEvent(StateEvent.TRANSITION_COMPLETE, from, to, args));
             return Result.SUCCEEDED;
-        };
-
-        transition.cancel = function():void {
-            dispatchEvent(new StateTransitionEvent(StateTransitionEvent.AFTER, from, to));
-        };
-
-        return Result.CANCELLED;
+        }
     }
-
-    /** My Implementation. */
-
-    private var mStates:Dictionary;
 
     /**
      * Retrieves the specified state by name.
@@ -243,6 +200,68 @@ public class FiniteStateMachine extends EventDispatcher {
                     delete mStates[k];
             }
         }
+    }
+
+    /** Initialize */
+    protected function init():Boolean {
+        // Parse the configuration.
+        if (!mCfg)
+            return false;
+
+        this.mInitial = (typeof mCfg.initial == 'String') ? {state: mCfg.initial} : mCfg.initial;
+        this.mTerminal = mCfg.terminal || mCfg['final'];
+        this.mEvents = mCfg.events || [];
+        // this.mCallbacks = mCfg.callbacks || {};
+        this.mEventMap = {};
+
+        // Nested helper: constructs the event-state map.
+        function add(e:*):void {
+            var from:Array = (e.from is Array) ? e.from : (e.from ? [e.from] : [FiniteStateMachine.WILDCARD]);
+            mEventMap[e.name] = mEventMap[e.name] || {};
+            for (var n:int = 0; n < from.length; ++n) {
+                mEventMap[e.name][from[n]] = e.to || from[n];
+            }
+        }
+
+        if (mInitial) {
+            mInitial.event = mInitial.event || 'startup';
+            add({name: mInitial.event, from: BUILTIN_STATES.NONE, to: mInitial.state});
+        }
+
+        for (var n:int = 0; n < mEvents.length; ++n) {
+            add(mEvents[n]);
+        }
+
+        for (var name:String in mEventMap) {
+            if (mEventMap.hasOwnProperty(name)) {
+//                mFsm[name] = FiniteStateMachine.buildEvent(name, mEventMap[name]);
+            }
+        }
+
+        mCurrent = new State(BUILTIN_STATES.NONE);
+
+        if (mInitial && !mInitial.defer) {
+            on(mInitial.event);
+        }
+
+        return true;
+    }
+
+    private function onTransition(event:StateEvent):void {
+        removeEventListener(StateEvent.TRANSITION_CANCELLED, onTransition);
+        removeEventListener(StateEvent.TRANSITION_COMPLETE, onTransition);
+
+        if (event.type == StateEvent.TRANSITION_COMPLETE) {
+            mCurrent = getState(event.to);
+            var state:State = getState(event.arguments[0]);
+            if (state) {
+                dispatchEvent(new StateEvent(StateEvent.ENTER, event.from, event.to, event.arguments));
+                dispatchEvent(new StateEvent(StateEvent.CHANGE, event.from, event.to, event.arguments));
+            }
+        }
+
+        dispatchEvent(new StateEvent(StateEvent.AFTER, event.from, event.to, event.arguments));
+        mTransition = false;
     }
 
 }

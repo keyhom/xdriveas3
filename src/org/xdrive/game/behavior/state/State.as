@@ -1,8 +1,8 @@
 package org.xdrive.game.behavior.state {
 import flash.events.EventDispatcher;
 
-[Event(name=StateEvent.ENTER, type="org.xdrive.game.behavior.state.StateEvent")]
-[Event(name=StateEvent.LEAVE, type="org.xdrive.game.behavior.state.StateEvent")]
+[Event(name="enterState", type="org.xdrive.game.behavior.state.StateEvent")]
+[Event(name="leaveState", type="org.xdrive.game.behavior.state.StateEvent")]
 /**
  * Represent a State of Finite State-Machine.
  *
