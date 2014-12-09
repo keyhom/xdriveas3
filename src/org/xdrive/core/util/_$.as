@@ -26,7 +26,8 @@ public class _$ {
 
         for each(var o:* in args) {
             for(var k:* in o) {
-                ret[k] = o[k];
+                if (o.hasOwnProperty(k))
+                    ret[k] = o[k];
             }
         }
 

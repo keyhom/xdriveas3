@@ -2,6 +2,7 @@ package org.xdrive.game.behavior.tree {
 import flash.events.Event;
 import flash.events.EventDispatcher;
 
+import org.xdrive.core.behave.DefaultBehaviorStatus;
 import org.xdrive.core.behave.IBehavior;
 import org.xdrive.core.behave.IBehaviorStatus;
 
@@ -15,10 +16,10 @@ import org.xdrive.core.behave.IBehaviorStatus;
  */
 public class Behavior extends EventDispatcher implements IBehavior {
 
-    public static const INVALID:IBehaviorStatus = new SimpleBehaviorStatus("invalid");
-    public static const SUCCESS:IBehaviorStatus = new SimpleBehaviorStatus("success");
-    public static const FAILURE:IBehaviorStatus = new SimpleBehaviorStatus("failure");
-    public static const RUNNING:IBehaviorStatus = new SimpleBehaviorStatus("running");
+    public static var INVALID:IBehaviorStatus = new DefaultBehaviorStatus("invalid");
+    public static var SUCCESS:IBehaviorStatus = new DefaultBehaviorStatus("success");
+    public static var FAILURE:IBehaviorStatus = new DefaultBehaviorStatus("failure");
+    public static var RUNNING:IBehaviorStatus = new DefaultBehaviorStatus("running");
 
     public static const EVENTS:Object = {
         INITIALIZE: "behavior_initialize",
@@ -59,8 +60,7 @@ public class Behavior extends EventDispatcher implements IBehavior {
      * Initialize
      */
     protected function initialize():Boolean {
-        dispatchEvent(new Event(EVENTS.INITIALIZE));
-        return true;
+        return dispatchEvent(new Event(EVENTS.INITIALIZE));
     }
 
     /**
@@ -78,30 +78,4 @@ public class Behavior extends EventDispatcher implements IBehavior {
     }
 
 }
-}
-
-//--------------------------------------
-// Helper classes
-//--------------------------------------
-
-import flash.errors.IllegalOperationError;
-
-import org.xdrive.core.behave.IBehaviorStatus;
-
-class SimpleBehaviorStatus implements IBehaviorStatus {
-
-    private var mValue:String;
-
-    public function SimpleBehaviorStatus(value:String) {
-        if (!value) {
-            throw new IllegalOperationError("Invalid value of BehaviorStatus.");
-        }
-
-        this.mValue = value;
-    }
-
-    public function get value():String {
-        return mValue;
-    }
-
 }

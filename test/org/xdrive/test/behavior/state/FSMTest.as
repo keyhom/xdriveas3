@@ -25,7 +25,7 @@ public class FSMTest {
             ]
         });
 
-        fsm.addState(new State("idle"))
+        fsm.addState(new MockIdleState())
                 .addState(new State("run"))
                 .addState(new State("hit"))
                 .addState(new State("dead"))

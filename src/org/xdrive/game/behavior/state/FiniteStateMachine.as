@@ -1,13 +1,18 @@
 package org.xdrive.game.behavior.state {
 import flash.errors.IllegalOperationError;
+import flash.events.Event;
 import flash.events.EventDispatcher;
 import flash.utils.Dictionary;
+
+import org.xdrive.game.behavior.state.State;
 
 [Event(name="beforeEvent", type="org.xdrive.game.behavior.state.StateEvent")]
 [Event(name="afterEvent", type="org.xdrive.game.behavior.state.StateEvent")]
 [Event(name="enterState", type="org.xdrive.game.behavior.state.StateEvent")]
 [Event(name="leaveState", type="org.xdrive.game.behavior.state.StateEvent")]
 [Event(name="stageChange", type="org.xdrive.game.behavior.state.StateEvent")]
+[Event(name="transitionComplete", type="org.xdrive.game.behavior.state.StateEvent")]
+[Event(name="transitionCancelled", type="org.xdrive.game.behavior.state.StateEvent")]
 /**
  * Finite-State-Machine (FSM)
  *
@@ -53,6 +58,7 @@ public class FiniteStateMachine extends EventDispatcher {
         sConstructorFlag = false;
         this.mCfg = cfg;
     }
+
     /** Configuration */
     private var mCfg:Object;
     /** The startup event object. */
@@ -64,15 +70,19 @@ public class FiniteStateMachine extends EventDispatcher {
     /** The tree of structure by state. */
     private var mEventMap:Object;
     /** The current State. */
-    private var mCurrent:State;
+    private var mCurrent:String;
     /** The flag to mark transition behavior. */
     private var mTransition:Boolean;
     /** My Implementation. */
 
     private var mStates:Dictionary;
 
-    public function get current():State {
+    public function get current():String {
         return mCurrent;
+    }
+
+    public function get currentState():State {
+        return getState(mCurrent);
     }
 
     public function get config():Object {
@@ -84,11 +94,11 @@ public class FiniteStateMachine extends EventDispatcher {
     }
 
     public function isState(state:*):Boolean {
-        return (state is Array) ? (state.indexOf(current.name) >= 0) : (current.name == state);
+        return (state is Array) ? (state.indexOf(current) >= 0) : (current == state);
     }
 
     public function can(event:String):Boolean {
-        return (mEventMap[event].hasOwnProperty(current.name) || mEventMap[event].hasOwnProperty(FiniteStateMachine.WILDCARD));
+        return !mTransition && (mEventMap[event].hasOwnProperty(current) || mEventMap[event].hasOwnProperty(FiniteStateMachine.WILDCARD));
     }
 
     public function cannot(event:String):Boolean {
@@ -103,7 +113,7 @@ public class FiniteStateMachine extends EventDispatcher {
      */
     public function on(event:String, ...args):int {
         var map:Object = mEventMap[event];
-        var from:String = current.name;
+        var from:String = current;
         var to:String = map[from] || map[WILDCARD] || from;
 
         if (mTransition)
@@ -164,7 +174,11 @@ public class FiniteStateMachine extends EventDispatcher {
         if (!state.name)
             throw new IllegalOperationError("Invalid name of State in addState.");
 
+        if (state.name in mStates && state == mStates[state.name])
+            return this;
+
         mStates[state.name] = state;
+        state.dispatchEvent(new Event(Event.ADDED));
 
         return this;
     }
@@ -178,13 +192,15 @@ public class FiniteStateMachine extends EventDispatcher {
     public function removeState(state:*):FiniteStateMachine {
         if (mStates) {
             var name:String;
-            if (typeof state == 'String')
+            if (state is String)
                 name = state;
             else if (state is State)
                 name = state.name;
 
-            if (name && mStates.hasOwnProperty(name)) {
+            if (name && (name in mStates)) {
+                var origin:State = mStates[state.name];
                 delete mStates[state.name];
+                origin.dispatchEvent(new Event(Event.REMOVED));
             }
         }
         return this;
@@ -196,10 +212,21 @@ public class FiniteStateMachine extends EventDispatcher {
     public function destroy():void {
         if (mStates) {
             for (var k:* in mStates) {
-                if (mStates.hasOwnProperty(k))
-                    delete mStates[k];
+                removeState(k);
             }
         }
+
+        mTerminal = null;
+        mStates = null;
+        mInitial = null;
+        mEventMap = null;
+        mEvents.splice(0, mEvents.length);
+        mEvents = null;
+        mCfg = null;
+
+        detachEventListeners();
+        removeEventListener(StateEvent.TRANSITION_CANCELLED, onTransition);
+        removeEventListener(StateEvent.TRANSITION_COMPLETE, onTransition);
     }
 
     /** Initialize */
@@ -208,10 +235,9 @@ public class FiniteStateMachine extends EventDispatcher {
         if (!mCfg)
             return false;
 
-        this.mInitial = (typeof mCfg.initial == 'String') ? {state: mCfg.initial} : mCfg.initial;
+        this.mInitial = (mCfg.initial is String) ? {state: mCfg.initial} : mCfg.initial;
         this.mTerminal = mCfg.terminal || mCfg['final'];
         this.mEvents = mCfg.events || [];
-        // this.mCallbacks = mCfg.callbacks || {};
         this.mEventMap = {};
 
         // Nested helper: constructs the event-state map.
@@ -232,17 +258,13 @@ public class FiniteStateMachine extends EventDispatcher {
             add(mEvents[n]);
         }
 
-        for (var name:String in mEventMap) {
-            if (mEventMap.hasOwnProperty(name)) {
-//                mFsm[name] = FiniteStateMachine.buildEvent(name, mEventMap[name]);
-            }
-        }
-
-        mCurrent = new State(BUILTIN_STATES.NONE);
+        mCurrent = BUILTIN_STATES.NONE;
 
         if (mInitial && !mInitial.defer) {
             on(mInitial.event);
         }
+
+        attachEventListeners();
 
         return true;
     }
@@ -252,9 +274,8 @@ public class FiniteStateMachine extends EventDispatcher {
         removeEventListener(StateEvent.TRANSITION_COMPLETE, onTransition);
 
         if (event.type == StateEvent.TRANSITION_COMPLETE) {
-            mCurrent = getState(event.to);
-            var state:State = getState(event.arguments[0]);
-            if (state) {
+            mCurrent = event.to;
+            if (currentState) {
                 dispatchEvent(new StateEvent(StateEvent.ENTER, event.from, event.to, event.arguments));
                 dispatchEvent(new StateEvent(StateEvent.CHANGE, event.from, event.to, event.arguments));
             }
@@ -262,6 +283,32 @@ public class FiniteStateMachine extends EventDispatcher {
 
         dispatchEvent(new StateEvent(StateEvent.AFTER, event.from, event.to, event.arguments));
         mTransition = false;
+    }
+
+    private function attachEventListeners():void {
+        addEventListener(StateEvent.ENTER, onStateEnter, false);
+        addEventListener(StateEvent.LEAVE, onStateLeave, false);
+    }
+
+    private function detachEventListeners():void {
+        removeEventListener(StateEvent.ENTER, onStateEnter, false);
+        removeEventListener(StateEvent.LEAVE, onStateLeave, false);
+    }
+
+    private function onStateEnter(event:StateEvent):void {
+        // Enter current state.
+        if (currentState) {
+            if (!currentState.dispatchEvent(new StateEvent(event.type, event.from, event.to, event.arguments)))
+                event.preventDefault();
+        }
+    }
+
+    private function onStateLeave(event:StateEvent):void {
+        // Leave current state.
+        if (currentState) {
+            if (!currentState.dispatchEvent(new StateEvent(event.type, event.from, event.to, event.arguments)))
+                event.preventDefault();
+        }
     }
 
 }

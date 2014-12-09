@@ -30,5 +30,15 @@ public class Composite extends Behavior {
         node.parent = null;
     }
 
+    public function getChildByIndex(index:int):IBehavior {
+        if (index < mChildren.length)
+            return mChildren[index];
+        return null;
+    }
+
+    public function removeAllChildNode():void {
+        mChildren.splice(0, mChildren.length);
+    }
+
 }
 }
