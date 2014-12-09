@@ -281,8 +281,8 @@ public class FiniteStateMachine extends EventDispatcher {
             }
         }
 
-        dispatchEvent(new StateEvent(StateEvent.AFTER, event.from, event.to, event.arguments));
         mTransition = false;
+        dispatchEvent(new StateEvent(StateEvent.AFTER, event.from, event.to, event.arguments));
     }
 
     private function attachEventListeners():void {

@@ -49,5 +49,17 @@ public class GameComponent implements IComponent, IDataHolder, IExternalizable {
         // implements to parse the data of component.
     }
 
+    protected function onEnter(sender:GameObject):void {
+
+    }
+
+    protected function onExit(sender:GameObject):void {
+
+    }
+
+    public function tickUpdate(delta:Number):void {
+
+    }
+
 }
 }
